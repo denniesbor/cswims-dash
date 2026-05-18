@@ -25,9 +25,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if settings.environment == "development" else [],
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=[
+        "https://cswims.denniesbor.me",
+        "http://localhost:5173",
+    ],
+    allow_methods=["GET"],
     allow_headers=["*"],
 )
 
