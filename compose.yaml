@@ -1,0 +1,101 @@
+# Role: Local development orchestration for the C-SWIM dashboard stack.
+# Author: Dennies Bor
+# Description:
+#   Brings up postgres, the FastAPI backend, the Prefect server, and the
+#   Prefect flows process. The api service runs uvicorn with --reload and
+#   mounts the source tree from the host so code changes reload without a
+#   rebuild. The prefect-flows service runs serve() which both registers
+#   the deployments and executes their scheduled runs in one process.
+#   The web frontend is not yet containerised and runs natively from web/.
+#
+# Port bindings are env-driven. By default they bind to 127.0.0.1 (dev).
+# For production on Proxmox, .env overrides POSTGRES_HOST=10.8.0.50 etc.
+
+services:
+  db:
+    image: postgres:18-alpine
+    container_name: cswim-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cswim}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cswim}
+      POSTGRES_DB: ${POSTGRES_DB:-cswim}
+    ports:
+      - "${POSTGRES_HOST:-127.0.0.1}:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - ./.postgres-data:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cswim} -d ${POSTGRES_DB:-cswim}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: cswim-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cswim}:${POSTGRES_PASSWORD:-cswim}@db:5432/${POSTGRES_DB:-cswim}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      APP_NAME: ${APP_NAME:-cswim-api}
+      APP_VERSION: ${APP_VERSION:-0.1.0}
+      SWPC_BASE_URL: ${SWPC_BASE_URL:-https://services.swpc.noaa.gov}
+      SPACETRACK_USERNAME: ${SPACETRACK_USERNAME}
+      SPACETRACK_PASSWORD: ${SPACETRACK_PASSWORD}
+    ports:
+      - "${API_HOST:-127.0.0.1}:${API_HOST_PORT:-8000}:8000"
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/seeds:/app/seeds:ro
+      - ./api/migrations:/app/migrations
+      - ./data:/app/data:ro
+    command: ["uvicorn", "cswim_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "/app/src"]
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: cswim-prefect-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://${POSTGRES_USER:-cswim}:${POSTGRES_PASSWORD:-cswim}@db:5432/prefect
+      PREFECT_UI_API_URL: ${PREFECT_UI_API_URL:-http://localhost:4200/api}
+    ports:
+      - "${PREFECT_HOST:-127.0.0.1}:${PREFECT_HOST_PORT:-4200}:4200"
+    command: prefect server start --host 0.0.0.0
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:4200/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  prefect-flows:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: cswim-prefect-flows
+    restart: unless-stopped
+    depends_on:
+      prefect-server:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cswim}:${POSTGRES_PASSWORD:-cswim}@db:5432/${POSTGRES_DB:-cswim}
+      PREFECT_API_URL: http://prefect-server:4200/api
+      SWPC_BASE_URL: ${SWPC_BASE_URL:-https://services.swpc.noaa.gov}
+      SPACETRACK_USERNAME: ${SPACETRACK_USERNAME}
+      SPACETRACK_PASSWORD: ${SPACETRACK_PASSWORD}
+    volumes:
+      - ./api/src:/app/src:ro
+      - ./api/seeds:/app/seeds:ro
+      - ./data:/app/data:ro
+      - ./flows:/app/flows:ro
+    working_dir: /app/flows
+    command: python /app/flows/deploy.py

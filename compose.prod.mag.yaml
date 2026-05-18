@@ -1,0 +1,33 @@
+# Production overrides for mag.gmu.edu deployment.
+# Run with: docker compose -f compose.yaml -f compose.prod.yaml up -d
+
+services:
+  db:
+    # don't expose postgres to the network
+    ports: !reset []
+    volumes:
+      - /Users/dkbor/data/cswim-satvuln/postgres:/var/lib/postgresql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+
+  api:
+    # localhost-only — reach via SSH tunnel for now
+    ports:
+      - "127.0.0.1:8090:8000"
+    # drop the dev source/seeds/migrations bind mounts; the image carries them
+    volumes:
+      - /Users/dkbor/data/cswim-satvuln/bulk:/app/data:ro
+    # no --reload in prod
+    command: ["uvicorn", "cswim_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      ENVIRONMENT: production
+
+  prefect-server:
+    ports:
+      - "127.0.0.1:4200:4200"
+    environment:
+      PREFECT_UI_API_URL: http://127.0.0.1:4200/api
+
+  prefect-flows:
+    volumes:
+      - /Users/dkbor/data/cswim-satvuln/bulk:/app/data:ro
+      - ./flows:/app/flows:ro

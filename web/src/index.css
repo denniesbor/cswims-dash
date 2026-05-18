@@ -1,0 +1,53 @@
+/*
+ * Role: Tailwind entry point and design token definitions.
+ * Author: Dennies Bor
+ * Description:
+ *   Imports Tailwind v4 and declares the dashboard design tokens through the
+ *   @theme directive. The classification colours mirror lib/classification.js
+ *   so the same scheme is available both as Tailwind utility classes and as
+ *   JavaScript values. The interface palette is deliberately neutral so that
+ *   colour, where it appears, carries scientific meaning rather than
+ *   decoration. The Inter typeface is loaded for clear screen legibility and
+ *   correct tabular figures in numeric contexts.
+ */
+
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("https://rsms.me/inter/font-files/InterVariable.woff2") format("woff2");
+}
+
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+
+  /* Vulnerability classification scheme. Diverging dark-red to dark-blue,
+     matching the C-SWIM paper figures so a class colour means the same
+     thing in the paper and on the dashboard. */
+  --color-critical: #67001f;
+  --color-elevated: #d6604d;
+  --color-moderate: #fddbc7;
+  --color-low: #92c5de;
+  --color-negligible: #053061;
+  --color-unclassified: #3f4756;
+
+  /* Dark interface palette. The dashboard is a mission-control surface;
+     the data and the class colours carry the brightness. */
+  --color-surface: #0d1117;
+  --color-surface-raised: #161b22;
+  --color-surface-inset: #1c2230;
+  --color-ink: #e6edf3;
+  --color-ink-muted: #8b97a6;
+  --color-line: #2a313c;
+  --color-accent: #58a6ff;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-surface);
+  color: var(--color-ink);
+  font-feature-settings: "tnum";
+}
