@@ -54,6 +54,7 @@ jobs:
         with:
           path: web/dist
 
+#  trigger deploy
   deploy:
     needs: build
     runs-on: ubuntu-latest
